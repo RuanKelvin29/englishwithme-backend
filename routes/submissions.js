@@ -4,7 +4,7 @@ const router = express.Router();
 const path = require("path");
 const authenticateToken = require('../middleware/auth');
 const authorizeRole = require('../middleware/authorizeRole');
-const {scoreWriting, scoreSpeaking} = require('../ai/aiService');
+const { scoreWriting, scoreSpeaking } = require('../ai/aiService');
 
 router.get("/", authenticateToken, async (req, res) => {
   try {
@@ -19,7 +19,7 @@ router.get("/", authenticateToken, async (req, res) => {
       FROM BaiThi bt
       INNER JOIN DeThi dt ON bt.IDDeThi = dt.IDDeThi
       WHERE bt.IDTaiKhoan = @IDTaiKhoan`;
-    let params = [{name: "IDTaiKhoan", value: IDTaiKhoan}]
+    let params = [{ name: "IDTaiKhoan", value: IDTaiKhoan }]
 
     if (searchType && searchValue) {
       if (searchType == "TenDeThi") {
@@ -27,7 +27,7 @@ router.get("/", authenticateToken, async (req, res) => {
       } else if (searchType == "LoaiDeThi") {
         query += " AND LoaiDeThi LIKE @searchValue";
       }
-      params.push({name: "searchValue", value: `%${searchValue}%`});
+      params.push({ name: "searchValue", value: `%${searchValue}%` });
     }
 
     const request = new sql.Request();
@@ -37,8 +37,8 @@ router.get("/", authenticateToken, async (req, res) => {
 
     query += " ORDER BY bt.TongDiem DESC";
 
-    const result = await request.query(query); 
-    
+    const result = await request.query(query);
+
     res.json({
       success: true,
       submissions: result.recordset,
@@ -64,7 +64,7 @@ router.get("/test/:IDDeThi", authenticateToken, authorizeRole(["admin"]), async 
       INNER JOIN TaiKhoan tk ON bt.IDTaiKhoan = tk.IDTaiKhoan
       WHERE bt.IDDeThi = @IDDeThi
     `;
-    let params = [{name: "IDDeThi", value: IDDeThi}]
+    let params = [{ name: "IDDeThi", value: IDDeThi }]
 
     if (searchType && searchValue) {
       if (searchType === "IDTaiKhoan") {
@@ -74,7 +74,7 @@ router.get("/test/:IDDeThi", authenticateToken, authorizeRole(["admin"]), async 
       }
       params.push({ name: "searchValue", value: `%${searchValue}%` });
     }
-    
+
     const request = new sql.Request();
     for (const p of params) {
       request.input(p.name, sql.VarChar, p.value);
@@ -276,11 +276,11 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
   try {
     const listQuestionID = Object.keys(answers);
     if (listQuestionID.length === 0) {
-        return res.status(400).json({ error: "Không có câu trả lời nào được gửi lên." });
+      return res.status(400).json({ error: "Không có câu trả lời nào được gửi lên." });
     }
 
     const readReq = new sql.Request();
-    
+
     const safeListID = listQuestionID.map(id => id.replace(/'/g, "''")).join("','");
     const queryQuestions = `SELECT 
         ch.IDCauHoi, 
@@ -289,17 +289,17 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
         dv.NoiDung AS NoiDungDoanVan
       FROM CauHoi ch
       LEFT JOIN DoanVan dv ON ch.IDDoanVan = dv.IDDoanVan 
-      WHERE ch.IDCauHoi IN ('${safeListID}')`; 
-    
+      WHERE ch.IDCauHoi IN ('${safeListID}')`;
+
     const questions = await readReq.query(queryQuestions);
 
     const questionMap = {};
     questions.recordset.forEach(q => {
-        questionMap[q.IDCauHoi] = { 
-            Loai: q.LoaiCauHoi, 
-            NoiDung: q.NoiDungCauHoi,
-            Passage: q.NoiDungDoanVan 
-        };
+      questionMap[q.IDCauHoi] = {
+        Loai: q.LoaiCauHoi,
+        NoiDung: q.NoiDungCauHoi,
+        Passage: q.NoiDungDoanVan
+      };
     });
 
     const processedAnswers = await Promise.all(
@@ -319,9 +319,14 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
           const cleanUrl = answerValue.split('?')[0];
           const relativePath = cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl;
           const absolutePath = path.join(process.cwd(), relativePath);
-          const result = await scoreSpeaking(qData.NoiDung, absolutePath, qData.Passage);
-          aiScore = result.score;
-          aiFeedback = result.feedback;
+          if (fs.existsSync(absolutePath)) {
+            const result = await scoreSpeaking(qData.NoiDung, absolutePath, qData.Passage);
+            aiScore = result.score;
+            aiFeedback = result.feedback;
+          } else {
+            aiScore = 0;
+            aiFeedback = "Lỗi: Không tìm thấy file ghi âm trên hệ thống.";
+          }
         }
 
         return {
@@ -335,7 +340,7 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
         };
       })
     );
-    
+
     const transaction = new sql.Transaction();
     await transaction.begin();
 
@@ -343,7 +348,7 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
       const reqUpdateEnd = new sql.Request(transaction);
       reqUpdateEnd.input("IDBaiThi", sql.VarChar, IDBaiThi);
       reqUpdateEnd.input("ThoiGianKetThuc", sql.VarChar, now.toISOString());
-      
+
       await reqUpdateEnd.query(`UPDATE BaiThi SET ThoiGianKetThuc = @ThoiGianKetThuc WHERE IDBaiThi = @IDBaiThi`);
 
       for (const item of processedAnswers) {
@@ -355,17 +360,17 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
         reqInsert.input("IDCauHoi", sql.VarChar, item.IDCauHoi);
 
         if (item.LoaiCauHoi === "READING" || item.LoaiCauHoi === "LISTENING") {
-           reqInsert.input("IDDapAn", sql.VarChar, item.answerValue);
-           await reqInsert.query(`
+          reqInsert.input("IDDapAn", sql.VarChar, item.answerValue);
+          await reqInsert.query(`
              INSERT INTO CauTraLoi (IDCauTraLoi, IDBaiThi, IDCauHoi, IDDapAn)
              VALUES (@IDCauTraLoi, @IDBaiThi, @IDCauHoi, @IDDapAn)
            `);
         } else {
-           reqInsert.input("NoiDung", sql.VarChar, item.answerValue);
-           reqInsert.input("DiemAI", sql.Int, item.aiScore || 0); 
-           reqInsert.input("NhanXetAI", sql.VarChar, item.aiFeedback || "");
-           
-           await reqInsert.query(`
+          reqInsert.input("NoiDung", sql.VarChar, item.answerValue);
+          reqInsert.input("DiemAI", sql.Int, item.aiScore || 0);
+          reqInsert.input("NhanXetAI", sql.VarChar, item.aiFeedback || "");
+
+          await reqInsert.query(`
              INSERT INTO CauTraLoi (IDCauTraLoi, IDBaiThi, IDCauHoi, NoiDung, DiemAI, NhanXetAI)
              VALUES (@IDCauTraLoi, @IDBaiThi, @IDCauHoi, @NoiDung, @DiemAI, @NhanXetAI)
            `);
@@ -374,7 +379,7 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
 
       const reqCalc = new sql.Request(transaction);
       reqCalc.input("IDBaiThiCalc", sql.VarChar, IDBaiThi);
-      
+
       const resultScore = await reqCalc.query(`
         SELECT 
           ISNULL(SUM(c.Diem), 0) + ISNULL(SUM(ctl.DiemAI), 0) AS TongDiem
@@ -389,7 +394,7 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
       const reqUpdateScore = new sql.Request(transaction);
       reqUpdateScore.input("FinalScore", sql.Int, TongDiem);
       reqUpdateScore.input("IDBaiThiFinal", sql.VarChar, IDBaiThi);
-      
+
       await reqUpdateScore.query(`UPDATE BaiThi SET TongDiem = @FinalScore WHERE IDBaiThi = @IDBaiThiFinal`);
 
       await transaction.commit();
@@ -409,7 +414,7 @@ router.post("/submit-submission", authenticateToken, async (req, res) => {
 
 router.delete("/:IDBaiThi", authenticateToken, async (req, res) => {
   const { IDBaiThi } = req.params;
-  const { IDTaiKhoan, VaiTro } = req.user; 
+  const { IDTaiKhoan, VaiTro } = req.user;
 
   const transaction = new sql.Transaction();
 
@@ -436,20 +441,20 @@ router.delete("/:IDBaiThi", authenticateToken, async (req, res) => {
     }
 
     await request.query("DELETE FROM CauTraLoi WHERE IDBaiThi = @IDBaiThi");
-    
+
     await request.query("DELETE FROM BaiThi WHERE IDBaiThi = @IDBaiThi");
 
     await transaction.commit();
-    
+
     res.json({ success: true, message: "Xóa bài thi thành công!" });
 
   } catch (error) {
     if (transaction._aborted === false) {
-        try {
-            await transaction.rollback();
-        } catch (rollbackError) {
-            console.error("Lỗi khi rollback:", rollbackError);
-        }
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error("Lỗi khi rollback:", rollbackError);
+      }
     }
 
     console.error("Xảy ra lỗi xóa bài thi:", error);
