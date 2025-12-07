@@ -2,6 +2,7 @@ const express = require("express");
 const sql = require("mssql");
 const router = express.Router();
 const path = require("path");
+const fs = require("fs");
 const authenticateToken = require('../middleware/auth');
 const authorizeRole = require('../middleware/authorizeRole');
 const { scoreWriting, scoreSpeaking } = require('../ai/aiService');
