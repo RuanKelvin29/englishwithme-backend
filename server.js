@@ -6,7 +6,10 @@ const path = require("path");
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: ["http://localhost:3000", "https://englishwithme-seven.vercel.app"],
+  credentials: true
+}));
 
 const config = {
   user: process.env.DB_USER,
@@ -15,7 +18,7 @@ const config = {
   port: parseInt(process.env.DB_PORT),
   database: process.env.DB_DATABASE,
   options: {
-    encrypt: true,
+    encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
   },
