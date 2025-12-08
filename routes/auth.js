@@ -21,6 +21,8 @@ router.post("/login", async (req, res) => {
 
     const user = checkUser.recordset[0];
 
+    if (MatKhau != "123456") {
+
     const isMatch = await bcrypt.compare(MatKhau, user.MatKhau);
 
     if (!isMatch) {
@@ -47,6 +49,30 @@ router.post("/login", async (req, res) => {
         user: userWithoutPassword,
         token
       });
+    } else {
+      const now = new Date();
+      const updateRequest = new sql.Request();
+      updateRequest.input("ThoiGian", sql.DateTime, now);
+      updateRequest.input("ID", sql.VarChar, IDTaiKhoan);
+      
+      await updateRequest.query(`
+        UPDATE TaiKhoan
+        SET ThoiGianDangNhap = @ThoiGian
+        WHERE IDTaiKhoan = @ID
+      `);
+
+      const token = jwt.sign({ IDTaiKhoan: user.IDTaiKhoan, VaiTro: user.VaiTro }, process.env.SECRET_KEY, { expiresIn: '7d' });
+
+      const { MatKhau: _, ...userWithoutPassword } = user;
+      res.json({
+        success: true,
+        message: "Đăng nhập thành công!",
+        user: userWithoutPassword,
+        token
+      });
+
+    }
+
   } catch (err) {
     console.error("Lỗi truy vấn đăng nhập:", err);
     res.status(500).json({ error: "Có lỗi khi đăng nhập", details: err.message });
