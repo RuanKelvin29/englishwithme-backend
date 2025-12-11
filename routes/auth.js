@@ -121,8 +121,8 @@ router.post("/register", async (req, res) => {
 router.put("/update-profile", async (req, res) => {
   const { IDTaiKhoan, MatKhau, Email } = req.body;
 
-  if (!IDTaiKhoan || !MatKhau || !Email) {
-    return res.status(400).json({ error: "Vui lòng nhập đầy đủ thông tin" });
+  if (!IDTaiKhoan || !Email) {
+    return res.status(400).json({ error: "Vui lòng nhập ID và Email" });
   }
 
   try {
@@ -130,31 +130,40 @@ router.put("/update-profile", async (req, res) => {
     request.input("IDTaiKhoan", sql.VarChar, IDTaiKhoan);
     request.input("Email", sql.VarChar, Email);
 
-    const checkEmail = await request.query("SELECT IDTaiKhoan FROM TaiKhoan WHERE Email = @Email");
+    const checkEmail = await request.query(`
+        SELECT IDTaiKhoan 
+        FROM TaiKhoan 
+        WHERE Email = @Email AND IDTaiKhoan != @IDTaiKhoan
+    `);
+    
     if (checkEmail.recordset.length > 0) {
-      return res.status(400).json({ error: "Email đã tồn tại!" });
+      return res.status(400).json({ error: "Email này đã được sử dụng bởi tài khoản khác!" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(MatKhau, salt);
-    
-    request.input("MatKhau", sql.VarChar, hashedPassword);
+    let query = "UPDATE TaiKhoan SET Email = @Email";
 
-    const result = await request.query(`
-      UPDATE TaiKhoan
-      SET MatKhau = @MatKhau, Email = @Email
-      WHERE IDTaiKhoan = @IDTaiKhoan
-  `);
+    if (MatKhau && MatKhau.trim() !== "") {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(MatKhau, salt);
+        
+        request.input("MatKhau", sql.VarChar, hashedPassword);
+        
+        query += ", MatKhau = @MatKhau";
+    }
+
+    query += " WHERE IDTaiKhoan = @IDTaiKhoan";
+
+    const result = await request.query(query);
 
     if (result.rowsAffected[0] > 0) {
       res.json({ success: true, message: "Cập nhật thành công!" });
     } else {
-      res.status(400).json({ error: "Không tìm thấy người dùng" });
+      res.status(404).json({ error: "Không tìm thấy người dùng để cập nhật" });
     }
+
   } catch (err) {
     console.error("Lỗi cập nhật thông tin tài khoản:", err);
-    res.status(500).json({ error: "Lỗi cập nhật thông tin tài khoản", details: err.message });
+    res.status(500).json({ error: "Lỗi Server", details: err.message });
   }
 });
-
 module.exports = router;
